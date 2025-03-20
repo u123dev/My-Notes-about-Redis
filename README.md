@@ -766,6 +766,12 @@ This case was applied recently in my LLM project with RAG.
 
 it is possible to use Redis instead of Pinecone or Milvus or Weaviate, for example.
 
+### Run in docker
+It is necessary to use ```redis-stack``` !
+```bash
+docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 redis/redis-stack:latest redis-server --appendonly yes
+```
+
 ### Connect to Redis
 ```python
 import redis
