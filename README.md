@@ -4,9 +4,11 @@ My experience in projects & some cases to help  to keep in mind Redis basic
 * [How to Run Redis](#How)
 * [List of Redis commands](#List)
 * [RDB (Redis Database) & AOF (Append Only File) Modes](#RDB-AOF)
+## Examples
 * [Examples of Redis commands on Python](#Examples)
 * [Some cases using Redis](#Cases)
 * [Example - how to use Redis with the popular Redis client for Python redis-py](#Client)
+##  Vector Database
 * [Recent case - Redis as Vector Database](#Vector)
 * [Index & how to create](#index_create)
 * [Index types](#index_types)
