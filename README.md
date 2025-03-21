@@ -760,11 +760,13 @@ r.delete('mykey')
 r.close()
 ```
 
+---
+
 <a id="Vector"></a>
 ## 🔥 Redis as a Vector Database ⚡️
 This case was applied recently in my LLM project with RAG. 
 
-it is possible to use Redis instead of Pinecone or Milvus or Weaviate, for example.
+it is possible to use Redis instead of Pinecone or Milvus or Weaviate or ChromaDB, for example.
 
 ### Run in docker
 It is necessary to use ```redis-stack``` !
@@ -792,7 +794,7 @@ redis_client = redis.Redis(
 # drop index
 index_name = INDEX_NAME  
 try:
-    self.redis_client.ft(index_name).dropindex()
+    self.redis_client.ft(index_name).dropindex()  # — удаляет RediSearch-индекс
     print("...Index dropped")
 except:
     # Index does not exist
@@ -808,13 +810,13 @@ vector_dim = len(embeddings[0]["vector"])  # length of the vectors
 vector_number = len(embeddings)
 
 # Define RediSearch fields
-text = TextField(name="text")
-text_embedding = VectorField("vector",
+text = TextField(name="text")                                      # определяет текстовое поле
+text_embedding = VectorField("vector",                             # определяет векторное поле
                              "FLAT", {
-                                 "TYPE": "FLOAT32",
-                                 "DIM": vector_dim,
-                                 "DISTANCE_METRIC": "COSINE",
-                                 "INITIAL_CAP": vector_number,
+                                 "TYPE": "FLOAT32",                # тип данных (32-битные float)
+                                 "DIM": vector_dim,                # размерность векторов
+                                 "DISTANCE_METRIC": "COSINE",      # метрика косинусного расстояния
+                                 "INITIAL_CAP": vector_number,     # начальная емкость индекса
                              }
                              )
 fields = [text, text_embedding]
@@ -826,15 +828,15 @@ fields = [text, text_embedding]
 
 # Check if index exists
 try:
-    self.redis_client.ft(INDEX_NAME).info()
+    self.redis_client.ft(INDEX_NAME).info()    # получает информацию об индексе. Если индекса нет, срабатывает except, и создается новый
     print("...Index already exists")
 except:
     # Create RediSearch Index
-    self.redis_client.ft(INDEX_NAME).create_index(
+    self.redis_client.ft(INDEX_NAME).create_index(    # создает новый RediSearch-индекс
         fields=fields,
-        definition=IndexDefinition(
-            prefix=[PREFIX],
-            index_type=IndexType.HASH
+        definition=IndexDefinition(                   
+            prefix=[PREFIX],                          # указывает, что индекс будет применяться к ключам, начинающимся с PREFIX
+            index_type=IndexType.HASH                 # использует HASH для хранения данных
         )
     )
 ```
@@ -843,11 +845,11 @@ except:
 ```python
 # load embeddings to redis
 for embedding in embeddings:
-    key = f"{PREFIX}:{str(embedding['id'])}"
-    embedding["vector"] = np.array(embedding["vector"], dtype=np.float32).tobytes()
-    self.redis_client.hset(key, mapping=embedding)
+    key = f"{PREFIX}:{str(embedding['id'])}"              # генерирует ключ для каждого объекта
+    embedding["vector"] = np.array(embedding["vector"], dtype=np.float32).tobytes()  # сериализует вектор в bytes
+    self.redis_client.hset(key, mapping=embedding)        # сохраняет объект как HASH в Redis
 print(
-    f"Loaded {self.redis_client.info()['db0']['keys']} documents in Redis search index with name: {INDEX_NAME}")
+    f"Loaded {self.redis_client.info()['db0']['keys']} documents in Redis search index with name: {INDEX_NAME}")  # получает количество ключей в базе db0
 
 ```
 
@@ -868,19 +870,19 @@ print(
             model="text-embedding-ada-002"
         ).data[0].embedding
         # Prepare the Query
-        base_query = f"{hybrid_fields}=>[KNN {k} @{vector_field} $vector AS vector_score]"
+        base_query = f"{hybrid_fields}=>[KNN {k} @{vector_field} $vector AS vector_score]"  # ищет k ближайших соседей по полю vector_field
         query = (
             Query(base_query)
-            .return_fields(*return_fields)
-            .sort_by("vector_score")
-            .paging(0, k)
-            .dialect(2)
+            .return_fields(*return_fields)            # возвращает указанные поля (text, vector_score)
+            .sort_by("vector_score")                  # сортирует по vector_score
+            .paging(0, k)                             # задает лимит k
+            .dialect(2)        # версия синтаксиса запроса в RediSearch. Если не указать, по умолчанию используется dialect(1)
         )
         params_dict = {
             "vector": np.array(embedded_query).astype(dtype=np.float32).tobytes()
         }
         # perform vector search
-        results = self.redis_client.ft(index_name).search(query, params_dict)
+        results = self.redis_client.ft(index_name).search(query, params_dict)    # выполняет поиск
         if print_results:
             for i, doc in enumerate(results.docs):
                 score = 1 - float(doc.vector_score)
@@ -894,6 +896,100 @@ print(
 # Get the results
 results = search_redis(keywords, print_results=True)
 ```
+Вызывается функция search_redis() :
+* Преобразует keywords в векторное представление.
+* Запускает поиск ближайших векторов в Redis.
+* Выводит результаты с их сходством.
+
+🚀 Этот код использует Redis как векторную базу данных для поиска ближайших соседей!
+
+ Команды Redis, которые используются в коде:
+
+ping() — проверяет соединение.
+
+dropindex() — удаляет индекс.
+
+info() — проверяет существование индекса.
+
+create_index() — создает индекс.
+
+hset() — записывает данные в HASH.
+
+info()['db0']['keys'] — получает количество записей.
+
+search() — выполняет поиск по вектору.
+
+
+## Что такое индекс в Redis?
+В Redis индекс — это структура, которая позволяет быстро находить и фильтровать данные, особенно при использовании RediSearch (модуля полнотекстового и векторного поиска).
+
+*🔹 Основные особенности индекса в Redis:
+Не является традиционным индексом (как в SQL)
+
+В обычном Redis данные хранятся в ключ-значение без индексов.
+Поиск возможен только по ключам (keys *) или через хеши, множества и списки.
+RediSearch индексирует данные
+
+Позволяет фильтровать, сортировать и искать документы быстрее.
+Поддерживает полнотекстовый поиск, поиск по вектору, фильтрацию по полям.
+Используется для ускорения поиска
+
+Если просто сохранять JSON или хеши в Redis, сложные запросы будут медленными.
+Индексы позволяют искать по тексту, фильтровать по числам, сортировать результаты.
+
+*🔹 Как создать индекс в Redis? (Пример с RediSearch)
+1️⃣ Определяем поля (например, текст и векторное представление):
+
+```python
+from redis.commands.search.field import TextField, VectorField
+
+text = TextField(name="text")  # Полнотекстовый поиск
+vector = VectorField("vector", "FLAT", {  
+    "TYPE": "FLOAT32",
+    "DIM": 1536,  # Размерность эмбеддинга
+    "DISTANCE_METRIC": "COSINE"
+})
+fields = [text, vector]
+```
+2️⃣ Создаем индекс
+
+```python
+from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+
+INDEX_NAME = "embeddings-index"
+
+redis_client.ft(INDEX_NAME).create_index(
+    fields=fields,
+    definition=IndexDefinition(
+        prefix=["doc:"],  # Префикс ключей, которые будут индексироваться
+        index_type=IndexType.HASH
+    )
+)
+```
+3️⃣ Добавляем данные
+
+```python
+redis_client.hset("doc:1", mapping={"text": "Пример документа", "vector": vector_data})
+```
+4️⃣ Делаем поиск
+
+```python
+query = Query("*").return_fields("text").sort_by("text")
+results = redis_client.ft(INDEX_NAME).search(query)
+```
+
+*🔹 Какие типы индексов есть в Redis?
+
+| Тип индекса	| Описание |
+|---|---|
+| RediSearch (FT Index)	} Полнотекстовый поиск по тексту и векторные индексы |
+| Secondary Indexes (ZSET, HASH)	| Используется для поиска и сортировки по конкретным полям |
+| Primary Index (ключи Redis)	| Обычные ключи Redis, поиск по keys * (неэффективно) |
+
+✅ Вывод:
+
+Индекс в Redis — это структура, помогающая быстро находить данные, особенно в RediSearch (для полнотекстового поиска и поиска по вектору).
+
 
 
 ---
