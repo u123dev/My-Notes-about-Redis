@@ -8,8 +8,8 @@ My experience in projects & some cases to help  to keep in mind Redis basic
 * [Some cases using Redis](#Cases)
 * [Example - how to use Redis with the popular Redis client for Python redis-py](#Client)
 * [Recent case - Redis as Vector Database](#Vector)
-* [Index & how to create](*index_create)
-* [Index types](*index_types)
+* [Index & how to create](#index_create)
+* [Index types](#index_types)
 * [Differencies: Redis Index & usual data](#index_diff)
 
 <a id="How"></a>
