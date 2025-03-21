@@ -14,7 +14,7 @@ My experience in projects & some cases to help  to keep in mind Redis basic
 * [Index types](#index_types)
 * [Differencies: Redis Index & usual data](#index_diff)
 
-===
+---
 
 <a id="How"></a>
 ## How to Run / Redis :
