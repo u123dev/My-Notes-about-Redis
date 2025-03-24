@@ -1043,6 +1043,128 @@ results = redis_client.ft("user_index").search(query)
 * Обычные данные Redis хороши для быстрого чтения по ключу.
 * Индексы в Redis (например, RediSearch) позволяют делать поиск по полям, фильтрацию, векторный поиск и сортировку.
 
+---
+
+## Индекс HNSW
+Помимо **FLAT** индекс или «brute-force», Redis также поддерживает **HNSW** индекс, который является быстрым, приблизительным индексом.  
+**HNSW** индекс представляет собой индекс на основе графа, который использует иерархический навигируемый граф малого мира для хранения векторов.  
+**HNSW** индекс является хорошим выбором для больших наборов данных, где вы хотите выполнять приблизительные запросы.  
+
+**HNSW** в большинстве случаев для построения потребуется больше времени и будет потреблять больше памяти, чем **FLAT**, но запросы будут выполняться быстрее, особенно для больших наборов данных.  
+
+### Пример -  
+создать **HNSW** индекс и выполнять запросы с его использованием.
+```python
+# re-define RediSearch vector fields to use HNSW index
+title_embedding = VectorField("title_vector",
+    "HNSW", {
+        "TYPE": "FLOAT32",
+        "DIM": VECTOR_DIM,
+        "DISTANCE_METRIC": DISTANCE_METRIC,
+        "INITIAL_CAP": VECTOR_NUMBER
+    }
+)
+text_embedding = VectorField("content_vector",
+    "HNSW", {
+        "TYPE": "FLOAT32",
+        "DIM": VECTOR_DIM,
+        "DISTANCE_METRIC": DISTANCE_METRIC,
+        "INITIAL_CAP": VECTOR_NUMBER
+    }
+)
+fields = [title, url, text, title_embedding, text_embedding]
+```
+
+```python
+import time
+# Check if index exists
+HNSW_INDEX_NAME = INDEX_NAME+ "_HNSW"
+
+try:
+    redis_client.ft(HNSW_INDEX_NAME).info()
+    print("Index already exists")
+except:
+    # Create RediSearch Index
+    redis_client.ft(HNSW_INDEX_NAME).create_index(
+        fields = fields,
+        definition = IndexDefinition(prefix=[PREFIX], index_type=IndexType.HASH)
+    )
+
+# since RediSearch creates the index in the background for existing documents, we will wait until
+# indexing is complete before running our queries. Although this is not necessary for the first query,
+# some queries may take longer to run if the index is not fully built. In general, Redis will perform
+# best when adding new documents to existing indices rather than new indices on existing documents.
+while redis_client.ft(HNSW_INDEX_NAME).info()["indexing"] == "1":
+    time.sleep(5)
+```
+
+### Пример  - поиск по индексу
+
+```python
+results = search_redis(redis_client, 'modern art in Europe', index_name=HNSW_INDEX_NAME, k=10)
+```
+### Ф-ция search_redis() :
+```python
+def search_redis(
+    redis_client: redis.Redis,
+    user_query: str,
+    index_name: str = "embeddings-index",
+    vector_field: str = "title_vector",
+    return_fields: list = ["title", "url", "text", "vector_score"],
+    hybrid_fields = "*",
+    k: int = 20,
+    print_results: bool = True,
+) -> List[dict]:
+
+    # Creates embedding vector from user query
+    embedded_query = openai.Embedding.create(input=user_query,
+                                            model="text-embedding-3-small",
+                                            )["data"][0]['embedding']
+
+    # Prepare the Query
+    base_query = f'{hybrid_fields}=>[KNN {k} @{vector_field} $vector AS vector_score]'
+    query = (
+        Query(base_query)
+         .return_fields(*return_fields)
+         .sort_by("vector_score")
+         .paging(0, k)
+         .dialect(2)
+    )
+    params_dict = {"vector": np.array(embedded_query).astype(dtype=np.float32).tobytes()}
+
+    # perform vector search
+    results = redis_client.ft(index_name).search(query, params_dict)
+    if print_results:
+        for i, article in enumerate(results.docs):
+            score = 1 - float(article.vector_score)
+            print(f"{i}. {article.title} (Score: {round(score ,3) })")
+    return results.docs
+```
+
+
+### Сравнение HNSW и FLAT - индексов:
+```python
+# compare the results of the HNSW index to the FLAT index and time both queries
+def time_queries(iterations: int = 10):
+    print(" ----- Flat Index ----- ")
+    t0 = time.time()
+    for i in range(iterations):
+        results_flat = search_redis(redis_client, 'modern art in Europe', k=10, print_results=False)
+    t0 = (time.time() - t0) / iterations
+    results_flat = search_redis(redis_client, 'modern art in Europe', k=10, print_results=True)
+    print(f"Flat index query time: {round(t0, 3)} seconds\n")
+    time.sleep(1)
+    print(" ----- HNSW Index ------ ")
+    t1 = time.time()
+    for i in range(iterations):
+        results_hnsw = search_redis(redis_client, 'modern art in Europe', index_name=HNSW_INDEX_NAME, k=10, print_results=False)
+    t1 = (time.time() - t1) / iterations
+    results_hnsw = search_redis(redis_client, 'modern art in Europe', index_name=HNSW_INDEX_NAME, k=10, print_results=True)
+    print(f"HNSW index query time: {round(t1, 3)} seconds")
+    print(" ------------------------ ")
+time_queries()
+```
+
 
 ---
 ### Contact me: u123@ua.fm
